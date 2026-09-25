@@ -7,25 +7,59 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+
+	"github.com/graph-gophers/graphql-go"
 )
 
-type exampleSubscriber struct{}
+const exampleSchema = `
+	schema {
+		query: Query
+		subscription: Subscription
+	}
 
-func (exampleSubscriber) Subscribe(context.Context, string, string, map[string]any) (<-chan any, error) {
-	results := make(chan any, 1)
-	results <- map[string]any{"data": map[string]string{"hello": "world"}}
-	close(results)
-	return results, nil
+	type Query {
+		hello: String!
+	}
+
+	type Subscription {
+		hello: String!
+	}
+`
+
+type exampleResolver struct{}
+
+type exampleQueryResolver struct{}
+
+type exampleSubscriptionResolver struct{}
+
+func (*exampleResolver) Query() *exampleQueryResolver {
+	return &exampleQueryResolver{}
+}
+
+func (*exampleResolver) Subscription() *exampleSubscriptionResolver {
+	return &exampleSubscriptionResolver{}
+}
+
+func (*exampleQueryResolver) Hello() string {
+	return "world"
+}
+
+func (*exampleSubscriptionResolver) Hello(context.Context) <-chan string {
+	res := make(chan string, 1)
+	res <- "world"
+	close(res)
+	return res
 }
 
 func ExampleNewHandlerFunc() {
-	handler := NewHandlerFunc(exampleSubscriber{}, nil, WithHeartbeatInterval(0))
-	server := httptest.NewServer(handler)
-	defer server.Close()
+	schema := graphql.MustParseSchema(exampleSchema, &exampleResolver{})
+	h := NewHandlerFunc(schema, nil, WithHeartbeatInterval(0))
+	srv := httptest.NewServer(h)
+	defer srv.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, server.URL+"?query=%7Bhello%7D", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"?query=subscription%20%7Bhello%7D", nil)
 	req.Header.Set("Accept", "text/event-stream")
-	res, _ := server.Client().Do(req)
+	res, _ := srv.Client().Do(req)
 	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(res.Body)
 	fmt.Print(strings.TrimSpace(string(body)))
