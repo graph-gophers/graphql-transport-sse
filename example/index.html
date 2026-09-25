@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>GraphiQL</title>
+  <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css" />
+  <style>
+    html,
+    body,
+    #graphiql {
+      height: 100%;
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="graphiql"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/graphiql@3/graphiql.min.js" crossorigin="anonymous"></script>
+  <script>
+    function isSubscription(documentAST, operationName) {
+      return documentAST?.definitions.some(def =>
+        def.kind === 'OperationDefinition' &&
+        def.operation === 'subscription' &&
+        (!operationName || def.name?.value === operationName),
+      ) ?? false;
+    }
+
+    // Subscriptions use the browser's native EventSource, which speaks the
+    // text/event-stream framing itself: each "next" event's e.data is
+    // already the JSON payload, and "complete" ends the async generator.
+    // EventSource only supports GET, so query/variables ride in the URL.
+    function subscribe(params) {
+      const url = new URL('/graphql', window.location.href);
+      url.searchParams.set('query', params.query);
+      if (params.operationName) url.searchParams.set('operationName', params.operationName);
+      if (params.variables) url.searchParams.set('variables', JSON.stringify(params.variables));
+
+      return {
+        [Symbol.asyncIterator]() {
+          const events = [];
+          let notify;
+          const source = new EventSource(url);
+          source.addEventListener('next', e => push({ value: JSON.parse(e.data) }));
+          source.addEventListener('complete', () => push({ done: true }));
+          source.onerror = () => push({ done: true });
+
+          function push(result) {
+            events.push(result);
+            notify?.();
+          }
+          return {
+            next: () => new Promise(resolve => {
+              if (events.length) return resolve(events.shift());
+              notify = () => resolve(events.shift());
+            }),
+            return: () => (source.close(), Promise.resolve({ done: true })),
+          };
+        },
+      };
+    }
+
+    // Queries and mutations are POSTed as plain JSON, matching how any
+    // GraphQL-over-HTTP client talks to the wrapped relay.Handler.
+    async function fetcher(params, opts) {
+      if (isSubscription(opts?.documentAST, params.operationName)) {
+        return subscribe(params);
+      }
+      const resp = await fetch('/graphql', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(params),
+      });
+      return resp.json();
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('graphiql'));
+    root.render(React.createElement(GraphiQL, {
+      fetcher,
+      defaultQuery: 'subscription {\n  counter\n}',
+    }));
+  </script>
+</body>
+
+</html>

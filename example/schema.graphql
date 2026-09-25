@@ -1,0 +1,14 @@
+schema {
+    query: Query
+    subscription: Subscription
+}
+
+type Query {
+    "The current value of the counter."
+    counter: Int!
+}
+
+type Subscription {
+    "Emits the counter's value once per second, incrementing it each time."
+    counter: Int!
+}
