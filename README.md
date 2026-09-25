@@ -28,17 +28,7 @@ Then open <http://localhost:8080> for a GraphiQL UI wired up to the SSE endpoint
 
 Requests without an `Origin` header and same-origin browser requests are allowed by
 default. Cross-origin requests are rejected unless `WithCheckOrigin` explicitly allows
-them. The default check compares host and — when this process terminates TLS directly
-(`r.TLS != nil`) — rejects an `Origin` that downgrades from `https` to `http` on the same
-host. It does not otherwise validate scheme, so deployments behind a TLS-terminating
-reverse proxy should supply a `WithCheckOrigin` callback that consults a trusted
-forwarded-proto header if strict scheme checking is required. This default matters
-because cookie-authenticated SSE streams can expose subscription data to an unintended
-origin. Prefer SameSite cookies or bearer authentication initiated by `fetch`, and
-configure an explicit origin allowlist when cross-origin access is required.
-
-See [SECURITY.md](SECURITY.md) for a complete list of security assumptions and
-recommendations for embedders.
+them. 
 
 ## Options
 
